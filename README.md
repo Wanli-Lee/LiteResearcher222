@@ -17,6 +17,9 @@
 
 ## News
 
+**2026-07**
+- 🎉 LiteResearcher is accepted to **COLM 2026**! See you in San Francisco (Oct 6–9, 2026) 🌉
+
 **2026-06**
 - 🚀 Training code released — GRPO + difficulty-aware curriculum ([`training/`](training/))
 - 📊 Training data released — Stage-1 & Stage-2 prompts ([`LiteResearcher-Data`](https://huggingface.co/datasets/simplex-ai-inc/LiteResearcher-Data))
