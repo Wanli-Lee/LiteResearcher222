@@ -1,0 +1,74 @@
+# LiteResearcher SFT cold-start
+#   base    : Qwen/Qwen3-4B-Thinking-2507
+#   data    : simplex-ai-inc/LiteResearcher-SFT-Data (68,231 trajectories)
+#   hardware: 8 x H100 80GB (single node)
+#   result  : the checkpoint released as simplex-ai-inc/LiteResearcher-4B-SFT
+#
+# Run from this directory:  bash train.sh
+
+### Model
+model_name_or_path: Qwen/Qwen3-4B-Thinking-2507
+trust_remote_code: true
+
+### Method
+stage: sft
+do_train: true
+finetuning_type: full
+
+### Data
+dataset_dir: .                     # look for dataset_info.json next to this file
+dataset: literesearcher_sft        # -> pulls from the HF Hub, no local prep needed
+template: qwen3
+cutoff_len: 65536                  # 64K; covers the full trajectory length distribution
+max_samples: 100000
+overwrite_cache: true
+preprocessing_num_workers: 16
+dataloader_num_workers: 0          # 0 avoids "Bus error" from shared-memory pressure
+
+### Packing (off: trajectories are already long)
+packing: false
+neat_packing: false
+
+### Keep the Thinking-2507 slow-thinking behaviour
+enable_thinking: true
+
+### Output
+output_dir: saves/literesearcher-4b-sft
+logging_steps: 1
+save_strategy: steps
+save_steps: 50
+save_on_each_node: false
+save_safetensors: true
+plot_loss: true
+overwrite_output_dir: true
+save_only_model: true
+
+### Logging (set WANDB_API_KEY / WANDB_PROJECT in the environment, or use report_to: none)
+report_to: wandb
+run_name: literesearcher-4b-sft-68.2k-64k
+
+### Hyper-parameters — global batch = 2 x 8 x 8 GPUs = 128
+per_device_train_batch_size: 2
+gradient_accumulation_steps: 8
+learning_rate: 2.0e-5
+num_train_epochs: 1.0
+lr_scheduler_type: cosine
+warmup_ratio: 0.1
+weight_decay: 0.01
+bf16: true
+ddp_timeout: 180000000
+
+### Reproducibility
+seed: 42
+data_seed: 42
+
+deepspeed: ds_z2_config.json
+
+### No validation split — every sample is used for training
+val_size: 0.0
+eval_strategy: "no"
+
+### Memory
+gradient_checkpointing: true       # required to fit 64K context
+flash_attn: fa2
+enable_liger_kernel: true          # fused cross-entropy, large VRAM saving at 64K
