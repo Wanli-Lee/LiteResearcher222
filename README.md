@@ -17,6 +17,9 @@
 
 ## News
 
+**2026-08**
+- 🧩 SFT cold-start data released — 68.2 K distilled deep-research trajectories ([`LiteResearcher-SFT-Data`](https://huggingface.co/datasets/simplex-ai-inc/LiteResearcher-SFT-Data)) **🆕**
+
 **2026-07**
 - 🎉 LiteResearcher is accepted to **COLM 2026**! See you in San Francisco (Oct 6–9, 2026) 🌉
 
@@ -107,6 +110,11 @@ See [`inference/README.md`](inference/README.md) for detailed configuration and 
 The full two-stage RL training pipeline (GRPO + TIS + difficulty-aware curriculum)
 is in [`training/`](training/), and the training data is hosted on
 [🤗 `LiteResearcher-Data`](https://huggingface.co/datasets/simplex-ai-inc/LiteResearcher-Data).
+The SFT cold-start trajectories that produce the RL starting checkpoint are on
+[🤗 `LiteResearcher-SFT-Data`](https://huggingface.co/datasets/simplex-ai-inc/LiteResearcher-SFT-Data) — you only need these if you want to redo the
+cold-start yourself; otherwise Stage 1 pulls the released
+[`LiteResearcher-4B-SFT`](https://huggingface.co/simplex-ai-inc/LiteResearcher-4B-SFT)
+checkpoint directly.
 
 ### Prerequisites
 
@@ -175,12 +183,13 @@ for the data schema and curriculum design.
 - [x] Evaluation code
 - [x] Project page
 - [x] Model weights — RL ([`LiteResearcher-4B`](https://huggingface.co/simplex-ai-inc/LiteResearcher-4B))
-- [x] Model weights — SFT cold-start ([`LiteResearcher-4B-SFT`](https://huggingface.co/simplex-ai-inc/LiteResearcher-4B-SFT), built on [`Qwen3-4B-Thinking-2507`](https://huggingface.co/Qwen/Qwen3-4B-Thinking-2507)) **🆕**
+- [x] Model weights — SFT cold-start ([`LiteResearcher-4B-SFT`](https://huggingface.co/simplex-ai-inc/LiteResearcher-4B-SFT), built on [`Qwen3-4B-Thinking-2507`](https://huggingface.co/Qwen/Qwen3-4B-Thinking-2507))
 - [x] Local search/browse environment setup ([`environment/`](environment/))
 - [x] Search corpus — 32M records ([`LiteResearcher-Corpus`](https://huggingface.co/datasets/simplex-ai-inc/LiteResearcher-Corpus))
 - [x] Training code — GRPO + curriculum RL ([`training/`](training/))
 - [x] Training data — Stage-1 & Stage-2 prompts ([`LiteResearcher-Data`](https://huggingface.co/datasets/simplex-ai-inc/LiteResearcher-Data))
 - [x] Data synthesis pipeline ([`datagen/`](datagen/))
+- [x] SFT cold-start data — 68.2 K distilled trajectories ([`LiteResearcher-SFT-Data`](https://huggingface.co/datasets/simplex-ai-inc/LiteResearcher-SFT-Data)) **🆕**
 
 ## Acknowledgements
 
