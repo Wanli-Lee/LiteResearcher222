@@ -19,6 +19,7 @@
 
 **2026-08**
 - 🧩 SFT cold-start data released — 68.2 K distilled deep-research trajectories ([`LiteResearcher-SFT-Data`](https://huggingface.co/datasets/simplex-ai-inc/LiteResearcher-SFT-Data)) **🆕**
+- 🧊 SFT cold-start recipe released — LLaMA-Factory config + launcher ([`sft/`](sft/)) **🆕**
 
 **2026-07**
 - 🎉 LiteResearcher is accepted to **COLM 2026**! See you in San Francisco (Oct 6–9, 2026) 🌉
@@ -82,6 +83,7 @@ Each trajectory renders 40–170 steps showing the model's `think` → `search` 
 
 ```
 ├── inference/              # Inference & evaluation (released)
+├── sft/                    # SFT cold-start recipe — LLaMA-Factory (released)
 ├── training/               # RL training — GRPO + curriculum (released)
 ├── datagen/                # Data synthesis (released)
 ├── environment/            # Local search/browse environment (released)
@@ -114,7 +116,7 @@ The SFT cold-start trajectories that produce the RL starting checkpoint are on
 [🤗 `LiteResearcher-SFT-Data`](https://huggingface.co/datasets/simplex-ai-inc/LiteResearcher-SFT-Data) — you only need these if you want to redo the
 cold-start yourself; otherwise Stage 1 pulls the released
 [`LiteResearcher-4B-SFT`](https://huggingface.co/simplex-ai-inc/LiteResearcher-4B-SFT)
-checkpoint directly.
+checkpoint directly. The runnable cold-start recipe is in [`sft/`](sft/).
 
 ### Prerequisites
 
@@ -190,6 +192,7 @@ for the data schema and curriculum design.
 - [x] Training data — Stage-1 & Stage-2 prompts ([`LiteResearcher-Data`](https://huggingface.co/datasets/simplex-ai-inc/LiteResearcher-Data))
 - [x] Data synthesis pipeline ([`datagen/`](datagen/))
 - [x] SFT cold-start data — 68.2 K distilled trajectories ([`LiteResearcher-SFT-Data`](https://huggingface.co/datasets/simplex-ai-inc/LiteResearcher-SFT-Data)) **🆕**
+- [x] SFT cold-start code — LLaMA-Factory recipe ([`sft/`](sft/)) **🆕**
 
 ## Acknowledgements
 
