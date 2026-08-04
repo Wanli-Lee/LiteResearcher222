@@ -170,7 +170,8 @@ for raw-source layout and schema.
 ### Pre-step: SFT cold-start
 
 Stage-1 RL initializes from a **`Qwen3-4B-Thinking-2507`** that has been SFT'd on
-68.2 K agentic-tool-use trajectories distilled from Tongyi-DeepResearch-30B.
+68.2 K agentic-tool-use trajectories distilled from Tongyi-DeepResearch-30B —
+released as [🤗 `LiteResearcher-SFT-Data`](https://huggingface.co/datasets/simplex-ai-inc/LiteResearcher-SFT-Data).
 We pick the Thinking-2507 base so the policy already carries long
 chain-of-thought (`<think>...</think>`) behaviour into the RL stage.
 
@@ -179,9 +180,12 @@ chain-of-thought (`<think>...</think>`) behaviour into the RL stage.
 > You can either download it directly to start Stage-1 RL, or re-train your own
 > with the hyper-params below.
 
-We trained ours with **LLaMA-Factory**:
+We trained ours with **LLaMA-Factory** on the released trajectories:
 
 ```bash
+hf download simplex-ai-inc/LiteResearcher-SFT-Data --repo-type dataset \
+            --local-dir ./literesearcher_sft_data     # 68,231 rows, 732 MB
+
 # Hyper-params we used (LLaMA-Factory):
 #   base model        : Qwen/Qwen3-4B-Thinking-2507
 #   training examples : 68.2 K  (distilled deep-research trajectories)
@@ -192,9 +196,10 @@ We trained ours with **LLaMA-Factory**:
 ```
 
 A SFT cold-start is a hard requirement — pure RL from a vanilla Qwen3-4B does
-not learn to use the tools reliably enough to bootstrap rewards. If you don't
-have the distillation data on hand, swap in any tool-using SFT of comparable
-quality and adjust expectations accordingly.
+not learn to use the tools reliably enough to bootstrap rewards. Either use our
+released checkpoint, re-run the cold-start on the released trajectories above, or
+swap in any tool-using SFT of comparable quality and adjust expectations
+accordingly.
 
 ### Stage 1 — single node, 8 × H20
 
