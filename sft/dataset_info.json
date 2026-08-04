@@ -1,0 +1,32 @@
+{
+  "literesearcher_sft": {
+    "hf_hub_url": "simplex-ai-inc/LiteResearcher-SFT-Data",
+    "formatting": "sharegpt",
+    "columns": {
+      "messages": "conversations"
+    },
+    "tags": {
+      "role_tag": "role",
+      "content_tag": "content",
+      "user_tag": "user",
+      "assistant_tag": "assistant",
+      "observation_tag": "observation",
+      "system_tag": "system"
+    }
+  },
+  "literesearcher_sft_local": {
+    "file_name": "literesearcher_sft_data/data",
+    "formatting": "sharegpt",
+    "columns": {
+      "messages": "conversations"
+    },
+    "tags": {
+      "role_tag": "role",
+      "content_tag": "content",
+      "user_tag": "user",
+      "assistant_tag": "assistant",
+      "observation_tag": "observation",
+      "system_tag": "system"
+    }
+  }
+}
