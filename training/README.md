@@ -180,7 +180,9 @@ chain-of-thought (`<think>...</think>`) behaviour into the RL stage.
 > You can either download it directly to start Stage-1 RL, or re-train your own
 > with the hyper-params below.
 
-We trained ours with **LLaMA-Factory** on the released trajectories:
+We trained ours with **LLaMA-Factory** on the released trajectories — the full
+runnable recipe (config, dataset registration, launcher) is in
+[`sft/`](../sft/), which also documents what the trainer does with the data:
 
 ```bash
 hf download simplex-ai-inc/LiteResearcher-SFT-Data --repo-type dataset \
