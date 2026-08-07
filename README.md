@@ -18,6 +18,7 @@
 ## News
 
 **2026-08**
+- 🌐 **Browse corpus released** — 14.4 M full web-page bodies (937 GB) powering the `visit` / `/web_parser` tool ([`LiteResearcher-Browse-Corpus`](https://huggingface.co/datasets/simplex-ai-inc/LiteResearcher-Browse-Corpus)) **🆕**
 - 🧩 SFT cold-start data released — 68.2 K distilled deep-research trajectories ([`LiteResearcher-SFT-Data`](https://huggingface.co/datasets/simplex-ai-inc/LiteResearcher-SFT-Data)) **🆕**
 - 🧊 SFT cold-start recipe released — LLaMA-Factory config + launcher ([`sft/`](sft/)) **🆕**
 
@@ -106,6 +107,34 @@ bash scripts/run_all.sh
 ```
 
 See [`inference/README.md`](inference/README.md) for detailed configuration and usage.
+
+## Quick Start — Local Browse (`visit`)
+
+`search` returns snippets only. To let the agent read full page bodies, load the browse corpus into
+PostgreSQL and turn on the `/web_parser` endpoint:
+
+```bash
+# 1. Download the corpus (~937 GB, 104 shards; grab a few shards first if you just want a trial)
+huggingface-cli download simplex-ai-inc/LiteResearcher-Browse-Corpus \
+    --repo-type dataset --local-dir ./browse_corpus
+
+# 2. Start your own PostgreSQL (any version >= 14; needs ~1.2-1.5 TB of disk)
+docker run -d --name lr-browse-db -p 5432:5432 \
+    -v /your/big/disk/pgdata:/var/lib/postgresql/data \
+    -e POSTGRES_PASSWORD=yourpassword --shm-size=1g \
+    postgres:17 -c shared_buffers=4GB -c maintenance_work_mem=2GB -c max_wal_size=8GB
+
+# 3. Load it (streams zstd -> COPY, resumable, ~10 h for the full corpus)
+python load_browse_db.py ./browse_corpus --password yourpassword
+
+# 4. Set ENABLE_SQL_FULLTEXT = True in environment/server/diskann_config.py, restart, then:
+curl -X POST http://localhost:8018/web_parser \
+     -H "Content-Type: application/json" \
+     -d '{"url": "https://arxiv.org/html/2405.05538v1"}'
+```
+
+`load_browse_db.py` ships with the dataset. Full instructions, dataset statistics and coverage
+caveats are on the [dataset card](https://huggingface.co/datasets/simplex-ai-inc/LiteResearcher-Browse-Corpus).
 
 ## Quick Start — Training
 
