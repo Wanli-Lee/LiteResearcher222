@@ -1,4 +1,4 @@
-"""Conservative matching for per-sample source URLs in search and browse tools."""
+"""Conservative matching for per-sample source URLs in search results."""
 
 from copy import deepcopy
 from urllib.parse import urlsplit, urlunsplit
@@ -40,11 +40,12 @@ def url_matches_mask(url: str, masked_url: str) -> bool:
 
 
 def bind_source_mask(tools_kwargs: dict, extra_info: dict = None) -> dict:
-    """Bind the sample's source to both tool instances without changing the row.
+    """Bind the sample's source to search without changing the row or visit kwargs.
 
     The dataset's mask_url (or legacy url) is authoritative. If it is absent,
     recover the source from existing search/visit/browse construction kwargs.
-    A known source must not disappear because one tool's kwargs are missing.
+    A known source must not disappear because search kwargs are missing.
+    Source masking applies only to search; visit remains unrestricted.
     """
     extra_info = extra_info or {}
     resolved = deepcopy(extra_info.get("tools_kwargs") or {})
@@ -58,11 +59,9 @@ def bind_source_mask(tools_kwargs: dict, extra_info: dict = None) -> dict:
     if not source:
         return resolved
 
-    for name in ("search", "visit"):
-        legacy = resolved.get("browse") if name == "visit" else None
-        tool_kwargs = deepcopy(resolved.get(name) or legacy or {})
-        create_kwargs = dict(tool_kwargs.get("create_kwargs") or {})
-        create_kwargs["url"] = source
-        tool_kwargs["create_kwargs"] = create_kwargs
-        resolved[name] = tool_kwargs
+    tool_kwargs = deepcopy(resolved.get("search") or {})
+    create_kwargs = dict(tool_kwargs.get("create_kwargs") or {})
+    create_kwargs["url"] = source
+    tool_kwargs["create_kwargs"] = create_kwargs
+    resolved["search"] = tool_kwargs
     return resolved

@@ -314,16 +314,16 @@ class ToolAgentLoop(AgentLoopBase):
             if tool_name not in ["search", "visit"]:
                 continue
 
-            # Keep actual source removals visible in the rollout metrics.
-            mask_metrics = {
-                "mask_configured_calls": int(res_metrics.get("url_mask_configured", False)),
-                "mask_hit_calls": int(res_metrics.get("url_masked", False)),
-                "masked_result_count": res_metrics.get("masked_result_count", 0),
-                "masked_url_count": res_metrics.get("masked_url_count", 0),
-            }
-            for name, value in mask_metrics.items():
-                key = f"tool/{tool_name}/{name}"
-                agent_data.metrics[key] = agent_data.metrics.get(key, 0) + value
+            # Source masking applies only to search results.
+            if tool_name == "search":
+                mask_metrics = {
+                    "mask_configured_calls": int(res_metrics.get("url_mask_configured", False)),
+                    "mask_hit_calls": int(res_metrics.get("url_masked", False)),
+                    "masked_result_count": res_metrics.get("masked_result_count", 0),
+                }
+                for name, value in mask_metrics.items():
+                    key = f"tool/search/{name}"
+                    agent_data.metrics[key] = agent_data.metrics.get(key, 0) + value
             
             # 初始化 metrics keys（如果不存在）
             count_key = f"tool/{tool_name}/total_count"
@@ -546,10 +546,7 @@ class ToolAgentLoop(AgentLoopBase):
             tool_name = tool_call.name
             tool_args = json.loads(tool_call.arguments)
             tool = self.tools[tool_name]
-            # Published datasets use "browse" for the tool exposed as "visit".
-            # Honor explicit "visit" kwargs when present, including an empty dict.
-            legacy_kwargs = tools_kwargs.get("browse", {}) if tool_name == "visit" else {}
-            kwargs = tools_kwargs.get(tool_name, legacy_kwargs)
+            kwargs = tools_kwargs.get(tool_name, {})
             
             create_result = await tool.create(create_kwargs=kwargs.get("create_kwargs", {}))
             instance_id = create_result[0] if isinstance(create_result, tuple) else create_result

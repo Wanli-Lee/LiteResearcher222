@@ -82,7 +82,7 @@ class Pool:
 
     async def call(self, fn, *args):
         self.calls.append(args)
-        return self.response
+        return self.response(*args) if callable(self.response) else self.response
 
 
 def search_tool(blocks, dedup):
@@ -118,15 +118,15 @@ class MatchingTests(unittest.TestCase):
     def test_mask_counts_reach_global_rollout_metrics(self):
         metrics = [[{"generate_sequences": 1, "tool_calls": 1, "tool/search/masked_result_count": 2,
                      "tool/search/mask_configured_calls": 1, "tool/search/mask_hit_calls": 1}],
-                   [{"generate_sequences": 2, "tool_calls": 1, "tool/visit/masked_url_count": 1,
-                     "tool/visit/mask_configured_calls": 2, "tool/visit/mask_hit_calls": 1}]]
+                   [{"generate_sequences": 2, "tool_calls": 1, "tool/search/masked_result_count": 3,
+                     "tool/search/mask_configured_calls": 2, "tool/search/mask_hit_calls": 1}]]
         output = SimpleNamespace(batch={"attention_mask": np.array([[1, 1, 1], [1, 1, 0]]),
                                         "prompts": np.array([[1], [1]])})
         merged = Manager()._performance_metrics(metrics, output)
-        self.assertEqual(merged["tool/search/masked_result_count"], 2)
-        self.assertEqual(merged["tool/visit/masked_url_count"], 1)
-        self.assertEqual(merged["tool/visit/mask_configured_calls"], 2)
-        self.assertEqual(merged["tool/visit/mask_hit_calls"], 1)
+        self.assertEqual(merged["tool/search/masked_result_count"], 5)
+        self.assertEqual(merged["tool/search/mask_configured_calls"], 3)
+        self.assertEqual(merged["tool/search/mask_hit_calls"], 2)
+        self.assertFalse(any(key.startswith("tool/visit/") and "mask" in key for key in merged))
 
     def test_legacy_parenthesis_and_legitimate_title(self):
         source = "https://example.org/wiki/Title_(part_(one))"
@@ -148,13 +148,13 @@ class MatchingTests(unittest.TestCase):
         for empty in [None, "", " ", 0]:
             self.assertFalse(url_masking.url_matches_mask("https://example.org/page", empty))
 
-    def test_bind_source_to_both_tools_without_mutating_sample(self):
+    def test_bind_source_only_to_search_without_mutating_sample(self):
         extra = {"mask_url": "https://example.org/source)", "tools_kwargs": {"browse": {"timeout": 5}}}
         original = copy.deepcopy(extra)
         resolved = url_masking.bind_source_mask(None, extra)
-        for name in ("search", "visit"):
-            self.assertEqual(resolved[name]["create_kwargs"]["url"], "https://example.org/source")
-        self.assertEqual(resolved["visit"]["timeout"], 5)
+        self.assertEqual(resolved["search"]["create_kwargs"]["url"], "https://example.org/source")
+        self.assertNotIn("visit", resolved)
+        self.assertEqual(resolved["browse"], extra["tools_kwargs"]["browse"])
         self.assertEqual(extra, original)
 
     def test_metadata_source_cannot_be_disabled_by_empty_tool_kwargs(self):
@@ -162,14 +162,16 @@ class MatchingTests(unittest.TestCase):
             {"visit": {}, "search": {"create_kwargs": {"url": "https://example.org/wrong"}}},
             {"mask_url": "https://example.org/source)"},
         )
-        for name in ("search", "visit"):
-            self.assertEqual(resolved[name]["create_kwargs"]["url"], "https://example.org/source")
+        self.assertEqual(resolved["search"]["create_kwargs"]["url"], "https://example.org/source")
+        self.assertEqual(resolved["visit"], {})
 
     def test_legacy_sources_are_recovered(self):
         for name in ("search", "visit", "browse"):
-            resolved = url_masking.bind_source_mask({name: {"create_kwargs": {"url": "https://example.org/source)"}}})
-            for target in ("search", "visit"):
-                self.assertEqual(resolved[target]["create_kwargs"]["url"], "https://example.org/source")
+            legacy = {"create_kwargs": {"url": "https://example.org/source)"}}
+            resolved = url_masking.bind_source_mask({name: legacy})
+            self.assertEqual(resolved["search"]["create_kwargs"]["url"], "https://example.org/source")
+            if name != "search":
+                self.assertEqual(resolved[name], legacy)
         resolved = url_masking.bind_source_mask({}, {"url": "https://example.org/source)"})
         self.assertEqual(resolved["search"]["create_kwargs"]["url"], "https://example.org/source")
 
@@ -252,40 +254,38 @@ class SearchTests(unittest.IsolatedAsyncioTestCase):
 
 
 class BrowseTests(unittest.IsolatedAsyncioTestCase):
-    async def test_direct_source_visit_never_reaches_backend(self):
+    async def test_direct_source_visit_reaches_backend_despite_legacy_mask(self):
         tool = browse_tool()
         instance, _ = await tool.create(create_kwargs={"url": "https://example.org/source)"})
         response, _, metrics = await tool.execute(instance, {"url": "https://example.org/source#section", "goal": "find"})
-        self.assertEqual(tool.execution_pool.calls, [])
-        self.assertNotIn("ALLOWED_PAGE_CONTENT", response.text)
-        self.assertNotIn("https://example.org/source", response.text)
-        self.assertEqual(metrics["masked_url_count"], 1)
-        self.assertEqual(metrics["fetched_url_count"], 0)
-        self.assertEqual(metrics["status"], "source_masked")
+        self.assertEqual([args[1] for args in tool.execution_pool.calls], ["https://example.org/source#section"])
+        self.assertIn("ALLOWED_PAGE_CONTENT", response.text)
+        self.assertEqual(metrics["status"], "success")
+        self.assertFalse(any("mask" in key for key in metrics))
 
-    async def test_mixed_visit_only_fetches_allowed_page(self):
+    async def test_mixed_visit_fetches_source_and_other_page(self):
         tool = browse_tool()
         instance, _ = await tool.create(create_kwargs={"url": "https://example.org/source)"})
         response, _, metrics = await tool.execute(instance, {"url": ["https://example.org/source", "https://example.org/other"], "goal": "find"})
-        self.assertEqual([args[1] for args in tool.execution_pool.calls], ["https://example.org/other"])
+        self.assertEqual([args[1] for args in tool.execution_pool.calls], ["https://example.org/source", "https://example.org/other"])
         self.assertIn("ALLOWED_PAGE_CONTENT", response.text)
         self.assertEqual(metrics["url_count"], 2)
-        self.assertEqual(metrics["masked_url_count"], 1)
-        self.assertEqual(metrics["fetched_url_count"], 1)
-        self.assertEqual(metrics["cache_hit_count"], 1)
+        self.assertEqual(metrics["cache_hit_count"], 2)
+        self.assertFalse(any("mask" in key for key in metrics))
 
-    async def test_mask_is_per_instance(self):
+    async def test_visit_instances_with_and_without_source_are_unrestricted(self):
         tool = browse_tool()
-        blocked, _ = await tool.create(create_kwargs={"url": "https://example.org/source)"})
-        allowed, _ = await tool.create()
+        with_source, _ = await tool.create(create_kwargs={"url": "https://example.org/source)"})
+        without_source, _ = await tool.create()
         outputs = await asyncio.gather(*[
-            tool.execute(instance, {"url": "https://example.org/source", "goal": "find"}) for instance in [blocked, allowed]
+            tool.execute(instance, {"url": "https://example.org/source", "goal": "find"}) for instance in [with_source, without_source]
         ])
-        self.assertEqual(len(tool.execution_pool.calls), 1)
-        self.assertTrue(outputs[0][2]["url_masked"])
-        self.assertFalse(outputs[1][2]["url_masked"])
+        self.assertEqual(len(tool.execution_pool.calls), 2)
+        for response, _, metrics in outputs:
+            self.assertIn("ALLOWED_PAGE_CONTENT", response.text)
+            self.assertFalse(any("mask" in key for key in metrics))
 
-    async def test_legacy_browse_kwargs_reach_visit_and_release_instance(self):
+    async def test_legacy_browse_metadata_does_not_mask_visit_and_instance_is_released(self):
         tool = browse_tool()
         loop = Loop()
         loop.tools = {"visit": tool}
@@ -293,20 +293,22 @@ class BrowseTests(unittest.IsolatedAsyncioTestCase):
         loop.tool_response_truncate_side = "right"
         call = SimpleNamespace(name="visit", arguments=json.dumps({"url": "https://example.org/source", "goal": "find"}))
         response, _, metrics = await loop._call_tool(call, {"browse": {"create_kwargs": {"url": "https://example.org/source)"}}})
-        self.assertEqual(tool.execution_pool.calls, [])
-        self.assertTrue(metrics["url_masked"])
+        self.assertEqual([args[1] for args in tool.execution_pool.calls], ["https://example.org/source"])
+        self.assertIn("ALLOWED_PAGE_CONTENT", response.text)
+        self.assertFalse(any("mask" in key for key in metrics))
         self.assertEqual(tool._instance_dict, {})
 
-    async def test_explicit_visit_kwargs_override_legacy_alias(self):
+    async def test_explicit_visit_source_kwargs_do_not_mask_visit(self):
         tool = browse_tool()
         loop = Loop()
         loop.tools = {"visit": tool}
         loop.max_tool_response_length = 10000
         loop.tool_response_truncate_side = "right"
         call = SimpleNamespace(name="visit", arguments=json.dumps({"url": "https://example.org/source", "goal": "find"}))
-        response, _, metrics = await loop._call_tool(call, {"visit": {}, "browse": {"create_kwargs": {"url": "https://example.org/source)"}}})
+        response, _, metrics = await loop._call_tool(call, {"visit": {"create_kwargs": {"url": "https://example.org/source)"}}})
         self.assertEqual(len(tool.execution_pool.calls), 1)
-        self.assertFalse(metrics["url_mask_configured"])
+        self.assertIn("ALLOWED_PAGE_CONTENT", response.text)
+        self.assertFalse(any("mask" in key for key in metrics))
         self.assertEqual(tool._instance_dict, {})
 
 
@@ -371,17 +373,22 @@ def full_loop(source):
         "search": search_tool([block([(source, "SOURCE_SECRET"), ("https://example.org/other", "SAFE_SEARCH_CONTENT")])], True),
         "visit": browse_tool(),
     }
+    loop.tools["visit"].execution_pool.response = lambda *args: (
+        "SOURCE_PAGE_CONTENT" if args[1] == source else "OTHER_PAGE_CONTENT",
+        {"status": "success", "from_cache": True},
+    )
     return loop
 
 
 class AgentLoopTests(unittest.IsolatedAsyncioTestCase):
-    async def test_run_masks_source_in_search_visit_and_next_model_context(self):
+    async def test_run_masks_search_but_visit_source_reaches_next_model_context(self):
         source = "https://example.org/wiki/Source_(page)"
         legacy = {"create_kwargs": {"url": source + ")"}}
         cases = [
             {"extra_info": {"mask_url": source + ")"}},
             {"extra_info": {"url": source + ")"}},
             {"tools_kwargs": {"browse": legacy}},
+            {"tools_kwargs": {"visit": legacy}},
             {"extra_info": {"mask_url": source + ")"}, "tools_kwargs": {"search": {}, "visit": {}}},
             {"extra_info": {"mask_url": source + ")", "tools_kwargs": {"search": legacy, "browse": legacy}}},
         ]
@@ -395,13 +402,15 @@ class AgentLoopTests(unittest.IsolatedAsyncioTestCase):
                 self.assertNotIn("SOURCE_SECRET", tool_text)
                 self.assertNotIn("SOURCE_SECRET", "\n".join(loop.server_manager.contexts))
                 self.assertIn("SAFE_SEARCH_CONTENT", tool_text)
-                self.assertIn("ALLOWED_PAGE_CONTENT", tool_text)
-                self.assertEqual([args[1] for args in loop.tools["visit"].execution_pool.calls], ["https://example.org/other"])
+                self.assertNotIn("SOURCE_PAGE_CONTENT", loop.server_manager.contexts[1])
+                self.assertIn("SOURCE_PAGE_CONTENT", loop.server_manager.contexts[2])
+                self.assertIn("OTHER_PAGE_CONTENT", tool_text)
+                self.assertEqual([args[1] for args in loop.tools["visit"].execution_pool.calls], [source, "https://example.org/other"])
                 self.assertEqual(output.metrics["tool/search/masked_result_count"], 1)
-                self.assertEqual(output.metrics["tool/visit/masked_url_count"], 1)
+                self.assertEqual(output.metrics["tool/search/mask_configured_calls"], 1)
+                self.assertEqual(output.metrics["tool/search/mask_hit_calls"], 1)
+                self.assertFalse(any(key.startswith("tool/visit/") and "mask" in key for key in output.metrics))
                 for name in ("search", "visit"):
-                    self.assertEqual(output.metrics[f"tool/{name}/mask_configured_calls"], 1)
-                    self.assertEqual(output.metrics[f"tool/{name}/mask_hit_calls"], 1)
                     self.assertEqual(loop.tools[name]._instance_dict, {})
                 self.assertIn("<answer>done</answer>", loop.tokenizer.decode(output.response_ids))
 
@@ -411,7 +420,7 @@ class AgentLoopTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("SOURCE_SECRET", "\n".join(loop.tokenizer.tool_messages))
         self.assertEqual(len(loop.tools["visit"].execution_pool.calls), 2)
         self.assertEqual(output.metrics["tool/search/masked_result_count"], 0)
-        self.assertEqual(output.metrics["tool/visit/masked_url_count"], 0)
+        self.assertFalse(any(key.startswith("tool/visit/") and "mask" in key for key in output.metrics))
         self.assertEqual(output.metrics["tool/search/mask_configured_calls"], 0)
 
 

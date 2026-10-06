@@ -166,15 +166,16 @@ for raw-source layout and schema.
 ### Source masking
 
 The tool agent loop binds each sample's `extra_info.mask_url` (legacy `url`)
-to both `search` and `visit`, falling back to existing tool construction kwargs.
-Legacy `browse` kwargs and extra closing Markdown parentheses are supported.
-Search removes the matching page and snippet; visit blocks the URL before any
-backend request. Empty masks leave the tools unrestricted. Matching preserves
-query parameters and does not resolve redirects or mirror pages.
+to `search`, falling back to existing tool construction kwargs (including legacy
+`browse` metadata). Extra closing Markdown parentheses are repaired.
+Search removes the matching page and snippet from its results. `visit` remains
+unrestricted and can access a known source URL normally. Empty masks leave search
+results unchanged. Matching preserves query parameters and does not resolve
+redirects or mirror pages.
 
-Rollout metrics expose `tool/{search,visit}/mask_configured_calls`,
-`mask_hit_calls`, and `masked_result_count` / `masked_url_count`.
-The tool-level `url_masked` flag now means an actual removal/block, rather than
+Rollout metrics expose `tool/search/mask_configured_calls`,
+`tool/search/mask_hit_calls`, and `tool/search/masked_result_count`.
+Search's tool-level `url_masked` flag now means an actual removal, rather than
 just a nonempty mask. Run CPU regressions from the repository root with
 `python3 training/tests/test_source_masking.py` (requires NumPy; services and
 model generation are simulated).

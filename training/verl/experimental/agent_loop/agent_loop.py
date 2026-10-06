@@ -972,10 +972,9 @@ class AgentLoopManager:
         timing["agent_loop/turn_truncated/samples_affected"] = samples_with_truncation
         timing["agent_loop/turn_truncated/sample_ratio"] = samples_with_truncation / total_samples if total_samples > 0 else 0.0
 
-        for tool_name in ("search", "visit"):
-            for name in ("mask_configured_calls", "mask_hit_calls", "masked_result_count", "masked_url_count"):
-                key = f"tool/{tool_name}/{name}"
-                timing[key] = sum(metric.get(key, 0) for chunk in metrics for metric in chunk)
+        for name in ("mask_configured_calls", "mask_hit_calls", "masked_result_count"):
+            key = f"tool/search/{name}"
+            timing[key] = sum(metric.get(key, 0) for chunk in metrics for metric in chunk)
 
         # Statistics for visit tool (browse) - detailed error breakdown
         visit_total = sum(metric.get("tool/visit/total_count", 0) for chunk in metrics for metric in chunk)
