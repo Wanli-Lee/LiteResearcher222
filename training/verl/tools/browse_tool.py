@@ -27,6 +27,7 @@ import ray
 import ray.actor
 
 from verl.tools.utils.browse_utils import perform_single_browse_batch
+from verl.tools.utils.url_masking import clean_mask_url, url_matches_mask
 from .base_tool import BaseTool
 from .schemas import OpenAIFunctionToolSchema, ToolResponse
 
@@ -242,12 +243,15 @@ class BrowseTool(BaseTool):
         
         return {}
 
-    async def create(self, instance_id: Optional[str] = None, **kwargs) -> tuple[str, ToolResponse]:
+    async def create(
+        self, instance_id: Optional[str] = None, create_kwargs: Optional[dict] = None, **kwargs
+    ) -> tuple[str, ToolResponse]:
         if instance_id is None:
             instance_id = str(uuid4())
         self._instance_dict[instance_id] = {
             "response": "",
             "reward": [],
+            "masked_url": clean_mask_url((create_kwargs or {}).get("url", "")),
         }
         return instance_id, ToolResponse()
 
@@ -293,10 +297,17 @@ class BrowseTool(BaseTool):
             logger.error(f"[BrowseTool] {error_msg}. Received: {parameters}")
             return ToolResponse(text=json.dumps({"result": error_msg}, ensure_ascii=False)), 0.0, {}
 
+        requested_url_count = len(url_list)
+        masked_url = self._instance_dict[instance_id].get("masked_url", "")
+        url_list = [url for url in url_list if not url_matches_mask(url, masked_url)]
+        masked_url_count = requested_url_count - len(url_list)
+
         try:
             import asyncio
             start_time = time.time()
-            
+
+            # Block source URLs before any cache, crawler, or summarizer call.
+            # An all-blocked request creates no backend tasks.
             # 并行执行所有 URL 请求
             tasks = [
                 self.execution_pool.execute.remote(
@@ -308,6 +319,8 @@ class BrowseTool(BaseTool):
             
             # 收集结果和统计信息
             all_results = []
+            if masked_url_count:
+                all_results.append("One or more requested pages are unavailable in this environment. Try another source.")
             cache_hit_count = 0           # 缓存命中且成功
             crawler_success_count = 0     # 爬虫成功（非缓存）
             cache_miss_count = 0          # 缓存未命中（后端返回 Cache miss 错误）
@@ -373,9 +386,14 @@ class BrowseTool(BaseTool):
             total_errors = connection_error_count + cache_miss_count + summary_error_count
             
             metrics = {
-                "url_count": len(url_list),
+                "url_count": requested_url_count,
+                "fetched_url_count": len(url_list),
+                "url_mask_configured": bool(masked_url),
+                "url_masked": masked_url_count > 0,
+                "masked_url_count": masked_url_count,
                 "goal": goal[:100],
-                "status": "success" if total_errors == 0 else "partial_error",
+                "status": ("source_masked" if masked_url_count and not url_list
+                           else "success" if total_errors == 0 else "partial_error"),
                 "tool_call_time": elapsed,
                 "tool_name": "visit",
                 # 详细统计

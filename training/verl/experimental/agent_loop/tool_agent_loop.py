@@ -28,6 +28,7 @@ from verl.interactions.base import BaseInteraction
 from verl.interactions.utils.interaction_registry import initialize_interactions_from_config
 from verl.tools.schemas import ToolResponse
 from verl.tools.utils.tool_registry import initialize_tools_from_config
+from verl.tools.utils.url_masking import bind_source_mask
 from verl.utils.profiler import simple_timer
 from verl.utils.rollout_trace import rollout_trace_op
 
@@ -120,7 +121,7 @@ class ToolAgentLoop(AgentLoopBase):
         image_data = copy.deepcopy(kwargs.get("multi_modal_data", {}).get("image", None))
         metrics = {}
         request_id = uuid4().hex
-        tools_kwargs = kwargs.get("tools_kwargs", {})
+        tools_kwargs = bind_source_mask(kwargs.get("tools_kwargs"), kwargs.get("extra_info"))
 
         # Initialize interaction if needed
         interaction = None
@@ -312,6 +313,17 @@ class ToolAgentLoop(AgentLoopBase):
             tool_name = res_metrics.get("tool_name", "unknown")
             if tool_name not in ["search", "visit"]:
                 continue
+
+            # Keep actual source removals visible in the rollout metrics.
+            mask_metrics = {
+                "mask_configured_calls": int(res_metrics.get("url_mask_configured", False)),
+                "mask_hit_calls": int(res_metrics.get("url_masked", False)),
+                "masked_result_count": res_metrics.get("masked_result_count", 0),
+                "masked_url_count": res_metrics.get("masked_url_count", 0),
+            }
+            for name, value in mask_metrics.items():
+                key = f"tool/{tool_name}/{name}"
+                agent_data.metrics[key] = agent_data.metrics.get(key, 0) + value
             
             # 初始化 metrics keys（如果不存在）
             count_key = f"tool/{tool_name}/total_count"
@@ -534,7 +546,10 @@ class ToolAgentLoop(AgentLoopBase):
             tool_name = tool_call.name
             tool_args = json.loads(tool_call.arguments)
             tool = self.tools[tool_name]
-            kwargs = tools_kwargs.get(tool_name, {})
+            # Published datasets use "browse" for the tool exposed as "visit".
+            # Honor explicit "visit" kwargs when present, including an empty dict.
+            legacy_kwargs = tools_kwargs.get("browse", {}) if tool_name == "visit" else {}
+            kwargs = tools_kwargs.get(tool_name, legacy_kwargs)
             
             create_result = await tool.create(create_kwargs=kwargs.get("create_kwargs", {}))
             instance_id = create_result[0] if isinstance(create_result, tuple) else create_result

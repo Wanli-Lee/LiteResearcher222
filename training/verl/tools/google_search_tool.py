@@ -30,6 +30,7 @@ import ray
 import ray.actor
 
 from verl.tools.utils.google_search_utils import perform_single_google_search_batch
+from verl.tools.utils.url_masking import clean_mask_url, url_matches_mask
 
 from .base_tool import BaseTool
 from .schemas import OpenAIFunctionToolSchema, ToolResponse
@@ -209,46 +210,19 @@ class GoogleSearchTool(BaseTool):
         logger.info(f"Initialized GoogleSearchTool with config: {config}")
 
     def _mask_url_in_search_result(self, search_result: str, masked_url: str, query: str = "") -> str:
-        """Mask URL from search results."""
-        # 调试：记录 mask_url 检查情况
-        if masked_url:
-            url_found = masked_url in search_result if isinstance(search_result, str) else False
-            _url_mask_logger.info(f"{datetime.now().strftime('%H:%M:%S')} | MASK_CHECK | query=\"{query[:50]}\" | mask_url=\"{masked_url[:80]}\" | found_in_result={url_found}")
-        
-        if not masked_url or not isinstance(search_result, str) or masked_url not in search_result:
+        """Remove complete source entries, including their snippets."""
+        if not masked_url or not isinstance(search_result, str):
             return search_result
-
-        result = search_result
-        while masked_url in result:
-            url_pos = result.find(masked_url)
-            position = result[:url_pos].count('\n\n') // 2 + 1
-            
-            # 记录日志
-            log_url_mask(query, position, masked_url)
-            
-            # 移除包含该 URL 的结果块
-            start_pos = result.rfind('\n\n', 0, url_pos)
-            start_pos = start_pos + 2 if start_pos != -1 else 0
-            
-            first_nn_after_url = result.find('\n\n', url_pos)
-            if first_nn_after_url == -1:
-                result = result[:start_pos]
-                break
-            
-            search_from = first_nn_after_url + 2
-            next_nn = result.find('\n\n', search_from)
-            separator_pos = result.find('\n=======\n', search_from)
-            
-            if separator_pos != -1 and (next_nn == -1 or separator_pos < next_nn):
-                end_pos = separator_pos
-            elif next_nn != -1:
-                end_pos = next_nn
+        results = self._parse_search_result_block(search_result)
+        kept = []
+        for position, result in enumerate(results, 1):
+            if url_matches_mask(result.get("link", ""), masked_url):
+                log_url_mask(query, position, masked_url)
             else:
-                end_pos = len(result)
-            
-            result = result[:start_pos] + result[end_pos:]
-        
-        return result
+                kept.append(result)
+        if len(kept) == len(results):
+            return search_result
+        return self._format_results_per_query([(query, kept)])
 
     def get_openai_tool_schema(self) -> OpenAIFunctionToolSchema:
         return self.tool_schema
@@ -260,7 +234,9 @@ class GoogleSearchTool(BaseTool):
         """
         results = []
         # 匹配格式: 数字. [标题](链接)\n内容
-        pattern = r'(\d+)\.\s*\[([^\]]*)\]\(([^)]+)\)\n(.*?)(?=\n\d+\.\s*\[|\Z)'
+        # The final ')' on the header line closes Markdown; earlier ones
+        # can be part of the URL (e.g. /wiki/Title_(disambiguation)).
+        pattern = r'(\d+)\.\s*\[([^\n]*)\]\(([^\n]+)\)\r?\n(.*?)(?=\r?\n\d+\.\s*\[|\Z)'
         matches = re.findall(pattern, block, re.DOTALL)
         
         for match in matches:
@@ -296,7 +272,7 @@ class GoogleSearchTool(BaseTool):
                 link = result.get('link', '')
                 
                 # 跳过 masked URL
-                if masked_url and masked_url in link:
+                if url_matches_mask(link, masked_url):
                     # 记录 mask 日志（去重路径）
                     _url_mask_logger.info(f"{datetime.now().strftime('%H:%M:%S')} | MASKED_IN_DEDUP | query=\"{query[:50]}\" | position={idx+1} | url={link[:100]}")
                     continue
@@ -341,7 +317,7 @@ class GoogleSearchTool(BaseTool):
             instance_id = str(uuid4())
         
         create_kwargs = create_kwargs or {}
-        masked_url = create_kwargs.get("url", "")
+        masked_url = clean_mask_url(create_kwargs.get("url", ""))
         
         # 调试：记录 create 调用
         _url_mask_logger.info(f"{datetime.now().strftime('%H:%M:%S')} | CREATE | instance={instance_id[:8]} | create_kwargs={create_kwargs} | masked_url=\"{masked_url[:80] if masked_url else ''}\"")
@@ -422,6 +398,11 @@ class GoogleSearchTool(BaseTool):
                 parsed_results = self._parse_search_result_block(content)
                 results_by_query.append((query, parsed_results))
             
+            masked_result_count = sum(
+                url_matches_mask(result.get("link", ""), masked_url)
+                for _, results in results_by_query for result in results
+            )
+
             # 去重（每个 query 相对于前面的 query 去重）
             if self.enable_dedup and results_by_query:
                 deduped_by_query, original_count, deduped_count = self._deduplicate_per_query(
@@ -430,37 +411,39 @@ class GoogleSearchTool(BaseTool):
                 result_text = self._format_results_per_query(deduped_by_query)
                 
                 # 记录去重统计
-                removed_count = original_count - deduped_count
+                removed_count = original_count - deduped_count - masked_result_count
                 if removed_count > 0:
                     logger.info(f"[GoogleSearchTool] Dedup: {original_count} -> {deduped_count} (removed {removed_count} duplicates)")
             else:
                 # 不去重时，合并原始结果
                 all_results = []
                 original_count = 0
-                for result_text, result_metadata in results_list:
+                for i, (result_text, result_metadata) in enumerate(results_list):
                     try:
                         parsed = json.loads(result_text)
                         content = parsed.get("result", result_text)
                     except json.JSONDecodeError:
                         content = result_text
-                    all_results.append(content)
                     original_count += len(self._parse_search_result_block(content))
+                    # Filter each query separately; keep query boundaries and
+                    # neighboring results when deduplication is disabled.
+                    if masked_url:
+                        query = query_list[i] if i < len(query_list) else f"query_{i}"
+                        content = self._mask_url_in_search_result(content, masked_url, query)
+                    all_results.append(content)
                 
                 result_text = "\n\n=======\n\n".join(all_results) if len(all_results) > 1 else (all_results[0] if all_results else "")
                 
-                # 应用 URL mask（不去重时仍需要 mask）
-                if masked_url:
-                    query_str = ", ".join(query_list) if query_list else ""
-                    result_text = self._mask_url_in_search_result(result_text, masked_url, query_str)
-                
-                deduped_count = original_count
+                deduped_count = original_count - masked_result_count
 
             self._instance_dict[instance_id]["reward"].append(result_text.strip())
 
             metrics = {
                 "query_count": len(query_list),
                 "status": metadata.get("status", "unknown"),
-                "url_masked": bool(masked_url),
+                "url_mask_configured": bool(masked_url),
+                "url_masked": masked_result_count > 0,
+                "masked_result_count": masked_result_count,
                 "tool_call_time": elapsed,
                 "tool_name": "search",
                 "original_result_count": original_count,
