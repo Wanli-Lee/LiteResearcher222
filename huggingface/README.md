@@ -25,7 +25,7 @@ Despite its compact scale, LiteResearcher-4B achieves **71.3%** on GAIA and **78
 
 ## Links
 
-- Paper: https://arxiv.org/abs/2604.17931
+- Paper: https://proceedings.colm.cc/paper_files/paper/2026/file/8249b30d877c91611fd8c7aa6ac2b5fe-Paper-Conference.pdf
 - Code: https://github.com/simplexai-labs/LiteResearcher
 - Project page: https://simplexai-labs.github.io/LiteResearcher/
 

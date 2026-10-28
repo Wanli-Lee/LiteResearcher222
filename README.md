@@ -4,7 +4,7 @@
 
 ### A Low-Cost, Scalable Agentic RL Training Framework for Deep Research Agent
 
-[![Paper](https://img.shields.io/badge/Paper-arXiv-b31b1b?logo=arxiv&logoColor=white)](https://arxiv.org/abs/2604.17931)
+[![Paper](https://img.shields.io/badge/Paper-COLM_2026-2563eb)](https://proceedings.colm.cc/paper_files/paper/2026/file/8249b30d877c91611fd8c7aa6ac2b5fe-Paper-Conference.pdf)
 [![Project](https://img.shields.io/badge/Project-Webpage-0a0a0a?logo=githubpages&logoColor=white)](https://simplexai-labs.github.io/LiteResearcher/)
 [![Models](https://img.shields.io/badge/Models-HuggingFace-ffcc00?logo=huggingface&logoColor=black)](https://huggingface.co/simplex-ai-inc)
 [![Datasets](https://img.shields.io/badge/Datasets-HuggingFace-ffcc00?logo=huggingface&logoColor=black)](https://huggingface.co/simplex-ai-inc)
@@ -58,7 +58,7 @@ Comparison across commercial models and open-source deep research agents on eigh
 <img src="figures/benchmark_results.png" width="100%">
 </div>
 
-Across all 8 benchmarks, LiteResearcher-4B is the best ≤8B agent on 6 — Mirothinker-8B leads on BrowseComp and BrowseComp-ZH. Full numbers are also in the [paper](https://arxiv.org/abs/2604.17931) and [`training/README.md`](training/README.md).
+Across all 8 benchmarks, LiteResearcher-4B is the best ≤8B agent on 6 — Mirothinker-8B leads on BrowseComp and BrowseComp-ZH. Full numbers are also in the [paper](https://proceedings.colm.cc/paper_files/paper/2026/file/8249b30d877c91611fd8c7aa6ac2b5fe-Paper-Conference.pdf) and [`training/README.md`](training/README.md).
 
 ## Method Overview
 
